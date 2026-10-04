@@ -36,24 +36,23 @@ import turtle
 import time
 import random
 import json
-import tkinter 
+import tkinter
+import colorsys   # NOUVEAU : pour générer un dégradé arc-en-ciel facilement
 
 # ============================================================
 # CONSTANTES
 # ============================================================
 FICHIER_HIGHSCORE = "highscore.txt"
-FICHIER_LEADERBOARD = "leaderboard.json"   # IDÉE 3 : classement des 5 meilleurs scores
+FICHIER_LEADERBOARD = "leaderboard.json"
 DELAY = None
 
-# IDÉE 6 : passe à True pour activer le mode "sans murs" (wraparound) —
-# le serpent réapparaît du côté opposé au lieu de mourir contre le mur.
-# Incompatible en pratique avec l'idée "mourir contre le mur" :
-# CHOIX DE DESIGN, pas un ajout en plus — un seul des deux comportements
-# est actif à la fois, contrôlé par cet interrupteur.
 MODE_SANS_MURS = False
 
-# IDÉE 2 : séquence de touches à reproduire pour débloquer le mode secret
+# Séquence de flèches à reproduire pour débloquer le mode secret.
 SEQUENCE_SECRETE = ["Up", "Right", "Down", "Left", "Up", "Left", "Down", "Right"]
+
+LARGEUR_BOUTON = 280
+HAUTEUR_BOUTON = 34
 
 # ============================================================
 # PERSISTANCE DU HIGH SCORE
@@ -74,8 +73,6 @@ def sauvegarder_highscore(valeur):
 
 # ============================================================
 # IDÉE 3 : PERSISTANCE DU CLASSEMENT (leaderboard avec pseudo)
-# Même principe que le high score, mais on stocke une LISTE de
-# dictionnaires {"nom": ..., "score": ...} au format JSON.
 # ============================================================
 def charger_leaderboard():
     try:
@@ -91,8 +88,8 @@ def sauvegarder_leaderboard(classement):
 def ajouter_score(nom, score_final):
     classement = charger_leaderboard()
     classement.append({"nom": nom, "score": score_final})
-    classement.sort(key=lambda e: e["score"], reverse=True)   # tri décroissant
-    classement = classement[:5]                                  # garde les 5 meilleurs
+    classement.sort(key=lambda e: e["score"], reverse=True)
+    classement = classement[:5]
     sauvegarder_leaderboard(classement)
 
 # ============================================================
@@ -103,7 +100,7 @@ wn.title("Snake Game")
 wn.bgcolor("black")
 wn.setup(width=600, height=600)
 wn.tracer(0)
-turtle.colormode(255)   # autorise les couleurs RGB (0-255) — nécessaire pour l'IDÉE 1
+turtle.colormode(255)
 
 # ---- FILIGRANE DE PERSONNALISATION ----
 filigrane = turtle.Turtle()
@@ -173,7 +170,6 @@ def generer_obstacles(nombre):
 
 # ============================================================
 # IDÉE 5 : OBSTACLE MOBILE (actif uniquement en mode "difficile")
-# Fait un simple va-et-vient horizontal, indépendamment du serpent.
 # ============================================================
 obstacle_mobile = turtle.Turtle()
 obstacle_mobile.speed(0)
@@ -182,12 +178,12 @@ obstacle_mobile.color("purple")
 obstacle_mobile.penup()
 obstacle_mobile.hideturtle()
 
-direction_obstacle_mobile = 1   # 1 = vers la droite, -1 = vers la gauche
+direction_obstacle_mobile = 1
 
 def deplacer_obstacle_mobile():
     global direction_obstacle_mobile
     if not obstacle_mobile.isvisible():
-        return   # pas en mode difficile : on ne fait rien
+        return
     nouvelle_x = obstacle_mobile.xcor() + 4 * direction_obstacle_mobile
     if nouvelle_x > 260 or nouvelle_x < -260:
         direction_obstacle_mobile *= -1
@@ -216,12 +212,20 @@ menu_pen.color("white")
 menu_pen.penup()
 menu_pen.hideturtle()
 
+bouton_pen = turtle.Turtle()
+bouton_pen.speed(0)
+bouton_pen.hideturtle()
+bouton_pen.penup()
+
+# record_pen : .penup() AVANT le .goto() — sans ça, le crayon "posé" par
+# défaut trace une ligne visible du centre de l'écran jusqu'ici.
 record_pen = turtle.Turtle()
 record_pen.speed(0)
 record_pen.color("gold")
+record_pen.penup()
 record_pen.hideturtle()
 record_pen.goto(0, 225)
-record_pen.hideturtle()
+
 # ============================================================
 # ÉTAT DU JEU
 # ============================================================
@@ -234,56 +238,57 @@ grow = 0
 direction = "stop"
 next_direction = "stop"
 
-# IDÉE 4 : statistiques de la partie en cours
 temps_debut = 0
 pommes_mangees = 0
 longueur_max = 1
 
-# IDÉE 2 : mémoire des dernières touches (pour détecter le code secret)
 buffer_touches = []
 mode_special = False
 pseudo = False
 pseudo_actuel = ""
 
-
 OPPOSES = {"Up": "Down", "Down": "Up", "Left": "Right", "Right": "Left"}
 
 # ============================================================
-# IDÉE 1 : COULEUR ÉVOLUTIVE DU SERPENT (corrigée)
-# Dégradé VERT → JAUNE → ROUGE, complet à PALIER_MAX points.
+# IDÉE 1 : COULEUR ÉVOLUTIVE DU SERPENT — VERSION ARC-EN-CIEL
+# colorsys.hsv_to_rgb(teinte, saturation, luminosité) convertit une
+# simple "teinte" (0 à 1) en couleur RGB. En faisant varier cette teinte
+# avec le score, on obtient un dégradé fluide à travers toutes les
+# couleurs : rouge → orange → jaune → vert → cyan → bleu → violet.
+# Le facteur *0.85 arrête le dégradé avant qu'il ne reboucle sur le rouge.
 # ============================================================
 def couleur_selon_score(s):
-    PALIER_MAX = 150
+    PALIER_MAX = 250
     t = min(s, PALIER_MAX) / PALIER_MAX
+    r, g, b = colorsys.hsv_to_rgb(t * 0.85, 1, 1)
+    return (int(r * 255), int(g * 255), int(b * 255))
 
-    if t < 0.5:
-        progression = t / 0.5
-        r = int(progression * 255)
-        g = 255
-        b = 0
-    else:
-        progression = (t - 0.5) / 0.5
-        r = 255
-        g = int(255 - progression * 255)
-        b = 0
-
-    return (r, g, b)
+def colorier_serpent():
+    """Applique la couleur actuelle (dorée en mode secret, sinon le
+    dégradé arc-en-ciel selon le score) à la TÊTE et à TOUS les
+    segments du corps — plus de corps gris figé, tout le serpent
+    change de couleur ensemble."""
+    couleur = "gold" if mode_special else couleur_selon_score(score)
+    head.color(couleur)
+    for seg in segments:
+        seg.color(couleur)
 
 def afficher_score():
     pen.clear()
     pen.write(f"Score: {score}  High Score: {high_score}", align="center", font=("Arial", 24, "normal"))
 
 # ============================================================
-# IDÉE 2 : CODE SECRET
+# IDÉE 2 : CODE SECRET (séquence de flèches)
 # ============================================================
 def verifier_code_secret(touche):
     global buffer_touches, mode_special
+    if buffer_touches and buffer_touches[-1] == touche:
+        return   # ignore un appui répété de la même touche (auto-répétition clavier)
     buffer_touches.append(touche)
     buffer_touches = buffer_touches[-len(SEQUENCE_SECRETE):]
-    print(buffer_touches)
     if buffer_touches == SEQUENCE_SECRETE and not mode_special:
         mode_special = True
-        head.color("gold")
+        colorier_serpent()
         print("✨ Mode secret activé !")
 
 # ============================================================
@@ -291,7 +296,7 @@ def verifier_code_secret(touche):
 # ============================================================
 def changer_direction(nouvelle):
     global next_direction
-    verifier_code_secret(nouvelle)   # IDÉE 2 : on vérifie à chaque touche de direction
+    verifier_code_secret(nouvelle)
     if OPPOSES.get(nouvelle) == direction:
         return
     next_direction = nouvelle
@@ -308,7 +313,6 @@ def go_left():
 def go_right():
     changer_direction("Right")
 
-# IDÉE 6 : gestion des murs — ne fait rien si MODE_SANS_MURS est False
 def gerer_murs():
     if not MODE_SANS_MURS:
         return
@@ -332,21 +336,22 @@ def move():
         head.setx(head.xcor() - 20)
     if direction == "Right":
         head.setx(head.xcor() + 20)
-    gerer_murs()   # IDÉE 6
+    gerer_murs()
 
 # ==========================
-# PAUSE 
+# PAUSE
 # ==========================
 def toogle_pause():
     global pause
     if game_over or en_menu:
-        return 
+        return
     pause = not pause
     if pause:
-        message_pen.goto(0,0)
-        message_pen.write("PAUSE - appuie sur p  pour reprendre", align ="center", font = ("Arial", 20, "bold"))
+        message_pen.goto(0, 0)
+        message_pen.write("PAUSE - appuie sur p  pour reprendre", align="center", font=("Arial", 20, "bold"))
     else:
         message_pen.clear()
+
 # ============================================================
 # IDÉE 4 : AFFICHAGE UNIFIÉ DU GAME OVER
 # ============================================================
@@ -357,7 +362,6 @@ def afficher_game_over(raison):
     if pseudo:
         ajouter_score(pseudo_actuel, score)
 
-    
     duree = int(time.time() - temps_debut)
     message_pen.clear()
     message_pen.goto(0, 40)
@@ -366,56 +370,75 @@ def afficher_game_over(raison):
     message_pen.write("Press Space to Restart", align="center", font=("Arial", 18, "normal"))
     message_pen.goto(0, -30)
     message_pen.write(f"Pommes: {pommes_mangees}  Longueur max: {longueur_max}  Durée: {duree}s",
-                    align="center", font=("Arial", 14, "normal"))
+                       align="center", font=("Arial", 14, "normal"))
     print(f"Game over : {raison}")
+
+def dessiner_bouton(y_centre, texte):
+    bouton_pen.setheading(0)
+    bouton_pen.goto(-LARGEUR_BOUTON / 2, y_centre - HAUTEUR_BOUTON / 2)
+    bouton_pen.pendown()
+    bouton_pen.fillcolor("#222222")
+    bouton_pen.pencolor("white")
+    bouton_pen.begin_fill()
+    for _ in range(2):
+        bouton_pen.forward(LARGEUR_BOUTON)
+        bouton_pen.left(90)
+        bouton_pen.forward(HAUTEUR_BOUTON)
+        bouton_pen.left(90)
+    bouton_pen.end_fill()
+    bouton_pen.penup()
+    bouton_pen.goto(0, y_centre - 7)
+    bouton_pen.write(texte, align="center", font=("Arial", 13, "bold"))
 
 # ============================================================
 # MENU DE DIFFICULTÉ
 # ============================================================
 def afficher_menu():
     menu_pen.clear()
-    menu_pen.goto(0, 130)
-    menu_pen.write(" YIN SNAKE GAME", align="center", font=("Arial", 32, "bold"))
-    menu_pen.goto(0, 60)
-    menu_pen.write("Veuillez choisir la difficulté :", align="center", font=("Arial", 18, "normal"))
-    menu_pen.goto(0, 20)
-    menu_pen.write("1 = easy level ", align="center", font=("Arial", 16, "normal"))
-    menu_pen.goto(0, -10)
-    menu_pen.write("2 = Medium Level ", align="center", font=("Arial", 16, "normal"))
-    menu_pen.goto(0, -40)
-    menu_pen.write("3 = HOT Level ", align="center", font=("Arial", 16, "normal"))
+    bouton_pen.clear()
 
-    # IDÉE 3 : affichage du classement directement sur le menu
+    menu_pen.goto(0, 150)
+    menu_pen.write(" YIN SNAKE GAME", align="center", font=("Arial", 32, "bold"))
+    menu_pen.goto(0, 95)
+    menu_pen.write("Clique sur un bouton, ou tape 1 / 2 / 3", align="center", font=("Arial", 15, "normal"))
+
+    dessiner_bouton(40, "1 - Facile (0 obstacle)")
+    dessiner_bouton(0, "2 - Moyen (4 obstacles)")
+    dessiner_bouton(-40, "3 - Difficile (8 obstacles + mobile)")
+
     classement = charger_leaderboard()
     if classement:
-        menu_pen.goto(0, -90)
+        menu_pen.goto(0, -100)
         menu_pen.write("Meilleurs scores :", align="center", font=("Arial", 14, "bold"))
-        y = -115
+        y = -125
         for i, entree in enumerate(classement, start=1):
             menu_pen.goto(0, y)
             menu_pen.write(f"{i}. {entree['nom']} - {entree['score']}", align="center", font=("Arial", 12, "normal"))
             y -= 22
 
 def demarrer(vitesse, nb_obstacles):
-    global DELAY, en_menu, temps_debut, pommes_mangees, longueur_max, pseudo_actuel
+    global DELAY, en_menu, temps_debut, pommes_mangees, longueur_max
+    global pseudo, pseudo_actuel, pause
+
     DELAY = vitesse
-    pseudo = False 
+    pseudo = False
     pseudo_actuel = ""
+    pause = False
     record_pen.clear()
+
+    menu_pen.clear()
+    bouton_pen.clear()
     generer_obstacles(nb_obstacles)
 
-    # IDÉE 5 : l'obstacle mobile n'apparaît qu'en mode difficile
     if nb_obstacles >= 8:
         obstacle_mobile.goto(0, 150)
         obstacle_mobile.showturtle()
     else:
         obstacle_mobile.hideturtle()
 
-    menu_pen.clear()
     food.showturtle()
     head.showturtle()
 
-    # IDÉE 4 : on réinitialise les statistiques au lancement
     temps_debut = time.time()
     pommes_mangees = 0
     longueur_max = 1
@@ -431,6 +454,20 @@ def moyen():
 
 def difficile():
     demarrer(0.06, 8)
+
+def gerer_clic_menu(x, y):
+    if not en_menu:
+        return
+
+    if abs(x) > LARGEUR_BOUTON / 2:
+        return
+
+    if 40 - HAUTEUR_BOUTON / 2 <= y <= 40 + HAUTEUR_BOUTON / 2:
+        facile()
+    elif 0 - HAUTEUR_BOUTON / 2 <= y <= 0 + HAUTEUR_BOUTON / 2:
+        moyen()
+    elif -40 - HAUTEUR_BOUTON / 2 <= y <= -40 + HAUTEUR_BOUTON / 2:
+        difficile()
 
 # ============================================================
 # REJOUER LA PARTIE
@@ -452,20 +489,19 @@ def reset_game():
     score = 0
     grow = 0
     game_over = False
-    
-    temps_debut = time.time()   # IDÉE 4
+
+    temps_debut = time.time()
     pommes_mangees = 0
     longueur_max = 1
     pseudo = False
     pseudo_actuel = ""
     pause = False
     record_pen.clear()
-    
+
     fx, fy = nouvelle_position_libre()
     food.goto(fx, fy)
 
-    if not mode_special:   # IDÉE 2 : si le mode secret est actif, on garde le doré
-        head.color(couleur_selon_score(score))   # IDÉE 1 : retour à la couleur de départ
+    colorier_serpent()   # remet la couleur de départ (le corps est déjà vide ici)
 
     message_pen.clear()
     afficher_score()
@@ -477,12 +513,14 @@ wn.listen()
 wn.onkeypress(facile, "1")
 wn.onkeypress(moyen, "2")
 wn.onkeypress(difficile, "3")
+wn.onclick(gerer_clic_menu)
 wn.onkeypress(go_up, "Up")
 wn.onkeypress(go_down, "Down")
 wn.onkeypress(go_left, "Left")
 wn.onkeypress(go_right, "Right")
 wn.onkeypress(reset_game, "space")
 wn.onkeypress(toogle_pause, "p")
+wn.onkeypress(toogle_pause, "P")
 
 # ============================================================
 # ÉCRAN DE MENU (avant le jeu)
@@ -506,7 +544,7 @@ try:
         if pause:
             time.sleep(DELAY)
             continue
-        
+
         # 1. Faire suivre le corps AVANT de déplacer la tête
         if segments:
             for i in range(len(segments) - 1, 0, -1):
@@ -515,10 +553,10 @@ try:
                 segments[i].goto(x, y)
             segments[0].goto(head.xcor(), head.ycor())
 
-        # 2. Déplacer la tête :
+        # 2. Déplacer la tête
         move()
 
-        # 3. Collision avec les murs (désactivée si MODE_SANS_MURS est True)
+        # 3. Collision avec les murs
         if not MODE_SANS_MURS:
             if abs(head.xcor()) > 290 or abs(head.ycor()) > 290:
                 afficher_game_over("mur")
@@ -536,7 +574,7 @@ try:
             time.sleep(DELAY)
             continue
 
-        # 4bis. IDÉE 5 : obstacle mobile (déplacement + collision)
+        # 4bis. Obstacle mobile
         deplacer_obstacle_mobile()
         if obstacle_mobile.isvisible() and head.distance(obstacle_mobile) < 20:
             afficher_game_over("obstacle mobile")
@@ -548,23 +586,22 @@ try:
             fx, fy = nouvelle_position_libre()
             food.goto(fx, fy)
             score += 10
-            pommes_mangees += 1   # IDÉE 4
+            pommes_mangees += 1
 
-            if not mode_special:   # IDÉE 2 : le mode secret garde sa couleur dorée fixe
-                head.color(couleur_selon_score(score))   # IDÉE 1
+            colorier_serpent()   # tête + corps recolorés ensemble selon le nouveau score
 
             if score > high_score:
                 high_score = score
                 sauvegarder_highscore(high_score)
 
-            
-                if not pseudo: 
-                    nom = wn.textinput("Nouveau record !", "Entre ton pseudo :")   # IDÉE 3
+                if not pseudo:
+                    nom = wn.textinput("Nouveau record !", "Entre ton pseudo :")
                     wn.listen()
                     pseudo_actuel = nom if nom else "Anonyme"
                     pseudo = True
+
                 record_pen.clear()
-                record_pen.write(f"Nouveau record :{pseudo_actuel}!", align = "center", font =("Arial", 14, "bold"))
+                record_pen.write(f"Nouveau record : {pseudo_actuel} !", align="center", font=("Arial", 14, "bold"))
 
             afficher_score()
             grow += 1
@@ -574,12 +611,13 @@ try:
             seg = turtle.Turtle()
             seg.speed(0)
             seg.shape("square")
-            seg.color("grey")
+            seg.color("grey")   # couleur de départ temporaire, écrasée juste après
             seg.penup()
             seg.goto(1000, 1000)
             segments.append(seg)
             grow -= 1
-            longueur_max = max(longueur_max, len(segments) + 1)   # IDÉE 4
+            longueur_max = max(longueur_max, len(segments) + 1)
+            colorier_serpent()   # recolore immédiatement ce nouveau segment avec les autres
 
         # 7. Collision avec son propre corps
         for seg in segments:
