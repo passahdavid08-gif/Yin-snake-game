@@ -37,7 +37,7 @@ Une version autonome pour Windows est disponible, ne nécessitant pas d'installa
 ## Contrôles
 
 | Touche | Action |
-|---|---| 
+|--------|--------|
 | Flèches directionnelles | Déplacer le serpent |
 | 1 / 2 / 3 ou clic souris | Choisir la difficulté (au menu) |
 | Espace | Rejouer après un Game Over |
@@ -51,4 +51,5 @@ Une version autonome pour Windows est disponible, ne nécessitant pas d'installa
 
 - Sons
 - Mode sans murs (wraparound) activable depuis le menu
-- Niveaux avec obstacles personnalises 
+- Niveaux avec obstacles personnalisés
+- D'autres modifications proposées seront les bienvenues
